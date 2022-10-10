@@ -7,12 +7,33 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTV: 1.59
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        build:
+          - pinned
+          - stable
+          - nightly
+        include:
+          - build: pinned
+            os: ubuntu-latest
+            rust: 1.41.1
+          - build: stable
+            os: ubuntu-latest
+            rust: stable
+          - build: nightly
+            os: ubuntu-latest
+            rust: nightly
     steps:
       - uses: actions/checkout@v3
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Build
