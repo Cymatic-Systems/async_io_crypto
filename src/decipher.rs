@@ -1,3 +1,4 @@
+use futures::ready;
 use pin_project_lite::pin_project;
 
 use aead::{
@@ -7,7 +8,11 @@ use aead::{
     AeadInPlace,
 };
 use bytes::{Buf, BufMut, BytesMut};
-use std::{ops::Sub, pin::Pin, task::*};
+use std::{
+    ops::Sub,
+    pin::Pin,
+    task::{Context, Poll},
+};
 use tokio::io::{AsyncRead, ReadBuf};
 
 use crate::{CHUNK_INFO_SIZE, CHUNK_SIZE};

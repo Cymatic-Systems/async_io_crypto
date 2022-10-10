@@ -1,7 +1,7 @@
 use std::{
     ops::Sub,
     pin::Pin,
-    task::{ready, Context, Poll},
+    task::{Context, Poll},
 };
 
 use aead::{
@@ -11,6 +11,7 @@ use aead::{
     AeadInPlace,
 };
 use bytes::{Buf, BufMut, BytesMut};
+use futures::ready;
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncRead, ReadBuf};
 
