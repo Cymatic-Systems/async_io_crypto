@@ -8,12 +8,16 @@ use aead::{
     consts::*,
     generic_array::{typenum::Unsigned, ArrayLength, GenericArray},
     stream::{EncryptorBE32, NewStream, Nonce, StreamBE32, StreamPrimitive},
+    AeadInPlace,
 };
 use bytes::{Buf, BufMut, BytesMut};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncRead, ReadBuf};
 
-use crate::{CHUNK_INFO_SIZE, CHUNK_SIZE, CIPHER, RNG, SOURCE};
+use crate::{CHUNK_INFO_SIZE, CHUNK_SIZE};
+//pub trait SOURCE = AsyncRead + Unpin + Send;
+//pub trait CIPHER = AeadInPlace + Send + Clone;
+//pub trait RNG = rand::RngCore + rand::CryptoRng + Send;
 
 #[derive(Debug, PartialEq)]
 enum State {
@@ -26,8 +30,10 @@ enum State {
 }
 
 pin_project! {
-    pub struct CipherRead<S: SOURCE, C: CIPHER>
+    pub struct CipherRead<S, C>
     where
+        S: AsyncRead,
+        C: AeadInPlace,
         <C as aead::AeadCore>::NonceSize: Sub<U5>,
         <<C as aead::AeadCore>::NonceSize as Sub<U5>>::Output: ArrayLength<u8>,
     {
@@ -41,13 +47,17 @@ pin_project! {
     }
 }
 
-impl<S: SOURCE, C: CIPHER> CipherRead<S, C>
+impl<S: AsyncRead + Unpin + Send, C: AeadInPlace + Send + Clone> CipherRead<S, C>
 where
     <C as aead::AeadCore>::NonceSize: Sub<U5>,
     <<C as aead::AeadCore>::NonceSize as Sub<U5>>::Output: ArrayLength<u8>,
 {
     const FETCH_SIZE: usize = CHUNK_SIZE - <C::CiphertextOverhead as Unsigned>::USIZE;
-    pub fn new<R: RNG>(reader: S, cipher: C, csprng: &mut R) -> (Self, Nonce<C, StreamBE32<C>>) {
+    pub fn new<R: rand::RngCore + rand::CryptoRng + Send>(
+        reader: S,
+        cipher: C,
+        csprng: &mut R,
+    ) -> (Self, Nonce<C, StreamBE32<C>>) {
         let buffer = BytesMut::with_capacity(CHUNK_SIZE);
         let mut nonce: Nonce<C, StreamBE32<C>> = GenericArray::default();
         csprng.fill_bytes(&mut nonce);
@@ -163,7 +173,7 @@ where
     }
 }
 
-impl<S: SOURCE, C: CIPHER> AsyncRead for CipherRead<S, C>
+impl<S: AsyncRead + Unpin + Send, C: AeadInPlace + Send + Clone> AsyncRead for CipherRead<S, C>
 where
     <C as aead::AeadCore>::NonceSize: Sub<U5>,
     <<C as aead::AeadCore>::NonceSize as Sub<U5>>::Output: ArrayLength<u8>,

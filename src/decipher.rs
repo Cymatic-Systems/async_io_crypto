@@ -4,12 +4,14 @@ use aead::{
     consts::*,
     generic_array::{ArrayLength, GenericArray},
     stream::{DecryptorBE32, NewStream, StreamBE32, StreamPrimitive},
+    AeadInPlace,
 };
 use bytes::{Buf, BufMut, BytesMut};
 use std::{ops::Sub, pin::Pin, task::*};
 use tokio::io::{AsyncRead, ReadBuf};
 
-use crate::{CHUNK_INFO_SIZE, CHUNK_SIZE, CIPHER, SOURCE};
+use crate::{CHUNK_INFO_SIZE, CHUNK_SIZE};
+
 #[derive(Debug, PartialEq)]
 enum State {
     Init,
@@ -20,8 +22,10 @@ enum State {
 }
 
 pin_project! {
-    pub struct DecipherRead<S: SOURCE, C: CIPHER>
+    pub struct DecipherRead<S, C>
     where
+        S: AsyncRead,
+        C: AeadInPlace,
         <C as aead::AeadCore>::NonceSize: Sub<U5>,
         <<C as aead::AeadCore>::NonceSize as Sub<U5>>::Output: ArrayLength<u8>,
     {
@@ -35,12 +39,12 @@ pin_project! {
     }
 }
 
-impl<R: SOURCE, C: CIPHER> DecipherRead<R, C>
+impl<S: AsyncRead + Unpin + Send, C: AeadInPlace + Send + Clone> DecipherRead<S, C>
 where
     <C as aead::AeadCore>::NonceSize: Sub<U5>,
     <<C as aead::AeadCore>::NonceSize as Sub<U5>>::Output: ArrayLength<u8>,
 {
-    pub fn new(reader: R, cipher: C, init_nonce: &[u8]) -> Self {
+    pub fn new(reader: S, cipher: C, init_nonce: &[u8]) -> Self {
         let buffer = BytesMut::with_capacity(CHUNK_SIZE);
         let init_nonce = GenericArray::from_slice(init_nonce);
         let decryptor = StreamBE32::from_aead(cipher, init_nonce).decryptor();
@@ -157,7 +161,7 @@ where
     }
 }
 
-impl<R: SOURCE, C: CIPHER> AsyncRead for DecipherRead<R, C>
+impl<R: AsyncRead + Unpin + Send, C: AeadInPlace + Send + Clone> AsyncRead for DecipherRead<R, C>
 where
     <C as aead::AeadCore>::NonceSize: Sub<U5>,
     <<C as aead::AeadCore>::NonceSize as Sub<U5>>::Output: ArrayLength<u8>,
