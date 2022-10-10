@@ -10,7 +10,7 @@ async fn it_can_cipher_and_decipher() {
     let data = value.as_bytes();
     let secret = b"super_secret_aaaaaaaaaaaaaaaaaaa";
     let key = Key::from_slice(secret);
-    let cipher: ChaCha20Poly1305 = ChaCha20Poly1305::new(&key);
+    let cipher: ChaCha20Poly1305 = ChaCha20Poly1305::new(key);
 
     let mut csprng = rand_chacha::ChaCha20Rng::from_entropy();
     let (ci_reader, nonce) = CipherRead::new(data, cipher.clone(), &mut csprng);
@@ -36,14 +36,14 @@ async fn it_can_cipher_then_decipher() {
     let data = value.as_bytes();
     let secret = b"super_secret_aaaaaaaaaaaaaaaaaaa";
     let key = Key::from_slice(secret);
-    let cipher: ChaCha20Poly1305 = ChaCha20Poly1305::new(&key);
+    let cipher: ChaCha20Poly1305 = ChaCha20Poly1305::new(key);
 
     let mut csprng = rand_chacha::ChaCha20Rng::from_entropy();
     let (mut ci_reader, nonce) = CipherRead::new(data, cipher.clone(), &mut csprng);
 
     let mut vec = Vec::new();
     ci_reader.read_to_end(&mut vec).await.unwrap();
-    assert!(vec.len() > 0);
+    assert!(!vec.is_empty());
 
     let mut deci_reader = DecipherRead::new(vec.as_slice(), cipher, nonce.as_slice());
 
@@ -58,10 +58,10 @@ async fn it_can_cipher_big_files() {
     let value = tokio::fs::File::open("tests/data/100k.csv").await.unwrap();
     let secret = b"super_secret_aaaaaaaaaaaaaaaaaaa";
     let key = Key::from_slice(secret);
-    let cipher: ChaCha20Poly1305 = ChaCha20Poly1305::new(&key);
+    let cipher: ChaCha20Poly1305 = ChaCha20Poly1305::new(key);
 
     let mut csprng = rand_chacha::ChaCha20Rng::from_entropy();
-    let (mut ci_reader, nonce) = CipherRead::new(value, cipher.clone(), &mut csprng);
+    let (mut ci_reader, _) = CipherRead::new(value, cipher.clone(), &mut csprng);
 
     let mut vec = Vec::with_capacity(1000000);
     ci_reader.read_to_end(&mut vec).await.unwrap();
@@ -74,7 +74,7 @@ async fn it_can_cipher_then_decipher_big_files() {
     let metadata = value.metadata().await.unwrap();
     let secret = b"super_secret_aaaaaaaaaaaaaaaaaaa";
     let key = Key::from_slice(secret);
-    let cipher: ChaCha20Poly1305 = ChaCha20Poly1305::new(&key);
+    let cipher: ChaCha20Poly1305 = ChaCha20Poly1305::new(key);
 
     let mut csprng = rand_chacha::ChaCha20Rng::from_entropy();
     let (mut ci_reader, nonce) = CipherRead::new(value, cipher.clone(), &mut csprng);
@@ -87,7 +87,7 @@ async fn it_can_cipher_then_decipher_big_files() {
 
     let mut br = BufReader::new(deci_reader).lines();
     let mut lc = 0;
-    while let Some(_) = br.next_line().await.unwrap() {
+    while br.next_line().await.unwrap().is_some() {
         lc += 1;
     }
     assert_eq!(lc, 100000);

@@ -225,7 +225,7 @@ mod tests {
         let data = tokio::io::empty();
         let secret = b"super_secret_aaaaaaaaaaaaaaaaaaa";
         let key = Key::from_slice(secret);
-        let cipher: ChaCha20Poly1305 = ChaCha20Poly1305::new(&key);
+        let cipher: ChaCha20Poly1305 = ChaCha20Poly1305::new(key);
 
         let mut csprng = rand_chacha::ChaCha20Rng::from_entropy();
         let mut nonce: Nonce<ChaCha20Poly1305, StreamBE32<ChaCha20Poly1305>> =
@@ -237,7 +237,7 @@ mod tests {
         let buf_reader = BufReader::new(reader);
         let mut lines = buf_reader.lines();
         let mut lc = 0;
-        while let Some(_) = lines.next_line().await.unwrap() {
+        while lines.next_line().await.unwrap().is_some() {
             lc += 1;
         }
 
