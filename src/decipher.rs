@@ -107,7 +107,7 @@ where
         self.read = 0;
         self.last = last;
         self.state = State::ReadingChunk(value);
-        self.buffer.reserve(value as usize);
+        self.buffer.reserve(value);
         Poll::Ready(Ok(rc))
     }
 

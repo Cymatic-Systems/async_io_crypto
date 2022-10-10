@@ -44,4 +44,5 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
       - name: Run clippy
+        if: matrix.build == 'stable'
         run: cargo clippy --all-targets --all-features -- -D warnings
