@@ -105,7 +105,7 @@ where
 
     fn poll_read_chunk(&mut self, cx: &mut Context<'_>) -> Poll<std::io::Result<usize>> {
         let (rc, eof) = ready!(self.poll_read_n(cx, Self::FETCH_SIZE))?;
-        if rc == 0 {
+        if self.read == 0 && rc == 0 {
             self.state = State::Eof;
             return Poll::Ready(Ok(0));
         }

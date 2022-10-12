@@ -54,8 +54,9 @@ async fn it_can_cipher_then_decipher() {
 }
 
 #[tokio::test]
-async fn it_can_cipher_big_files() {
-    let value = tokio::fs::File::open("tests/data/100k.csv").await.unwrap();
+async fn it_can_cipher_files() {
+    let value = tokio::fs::File::open("tests/data/lorem.txt").await.unwrap();
+    let metadata = value.metadata().await.unwrap();
     let secret = b"super_secret_aaaaaaaaaaaaaaaaaaa";
     let key = Key::from_slice(secret);
     let cipher: ChaCha20Poly1305 = ChaCha20Poly1305::new(key);
@@ -65,12 +66,12 @@ async fn it_can_cipher_big_files() {
 
     let mut vec = Vec::with_capacity(1000000);
     ci_reader.read_to_end(&mut vec).await.unwrap();
-    assert!(vec.len() > 4500000);
+    assert!(vec.len() as u64 >= metadata.len());
 }
 
 #[tokio::test]
-async fn it_can_cipher_then_decipher_big_files() {
-    let value = tokio::fs::File::open("tests/data/100k.csv").await.unwrap();
+async fn it_can_cipher_then_decipher_files() {
+    let value = tokio::fs::File::open("tests/data/lorem.txt").await.unwrap();
     let metadata = value.metadata().await.unwrap();
     let secret = b"super_secret_aaaaaaaaaaaaaaaaaaa";
     let key = Key::from_slice(secret);
@@ -81,7 +82,7 @@ async fn it_can_cipher_then_decipher_big_files() {
 
     let mut vec = Vec::with_capacity(65000);
     ci_reader.read_to_end(&mut vec).await.unwrap();
-    assert!(vec.len() as u64 > metadata.len());
+    assert!(vec.len() as u64 >= metadata.len());
 
     let deci_reader = DecipherRead::new(vec.as_slice(), cipher, nonce.as_slice());
 
@@ -90,5 +91,50 @@ async fn it_can_cipher_then_decipher_big_files() {
     while br.next_line().await.unwrap().is_some() {
         lc += 1;
     }
-    assert_eq!(lc, 100000);
+    assert_eq!(lc, 35);
+}
+
+#[tokio::test]
+async fn it_can_cipher_big_files() {
+    let value = tokio::fs::File::open("tests/data/lorem_big.txt")
+        .await
+        .unwrap();
+    let metadata = value.metadata().await.unwrap();
+    let secret = b"super_secret_aaaaaaaaaaaaaaaaaaa";
+    let key = Key::from_slice(secret);
+    let cipher: ChaCha20Poly1305 = ChaCha20Poly1305::new(key);
+
+    let mut csprng = rand_chacha::ChaCha20Rng::from_entropy();
+    let (mut ci_reader, _) = CipherRead::new(value, cipher.clone(), &mut csprng);
+
+    let mut vec = Vec::with_capacity(1000000);
+    ci_reader.read_to_end(&mut vec).await.unwrap();
+    assert!(vec.len() as u64 >= metadata.len());
+}
+
+#[tokio::test]
+async fn it_can_cipher_then_decipher_big_files() {
+    let value = tokio::fs::File::open("tests/data/lorem_big.txt")
+        .await
+        .unwrap();
+    let metadata = value.metadata().await.unwrap();
+    let secret = b"super_secret_aaaaaaaaaaaaaaaaaaa";
+    let key = Key::from_slice(secret);
+    let cipher: ChaCha20Poly1305 = ChaCha20Poly1305::new(key);
+
+    let mut csprng = rand_chacha::ChaCha20Rng::from_entropy();
+    let (mut ci_reader, nonce) = CipherRead::new(value, cipher.clone(), &mut csprng);
+
+    let mut vec = Vec::with_capacity(65000);
+    ci_reader.read_to_end(&mut vec).await.unwrap();
+    assert!(vec.len() as u64 >= metadata.len());
+
+    let deci_reader = DecipherRead::new(vec.as_slice(), cipher, nonce.as_slice());
+
+    let mut br = BufReader::new(deci_reader).lines();
+    let mut lc = 0;
+    while br.next_line().await.unwrap().is_some() {
+        lc += 1;
+    }
+    assert_eq!(lc, 325);
 }
