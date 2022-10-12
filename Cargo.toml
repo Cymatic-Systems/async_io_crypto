@@ -2,6 +2,16 @@
 name = "async_io_crypto"
 version = "0.1.0"
 edition = "2021"
+authors = ["Charles Roussel"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/chroussel/async_io_crypto"
+homepage = "https://github.com/chroussel/async_io_crypto"
+description = """
+A rust library for handling AsyncRead with ciphering / deciphering.
+"""
+categories = ["asynchronous", "security"]
+keywords = ["io", "async", "aead", "ciphering"]
 
 [dependencies]
 tokio = {version = "1"}

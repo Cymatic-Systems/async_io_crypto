@@ -6,8 +6,9 @@ on:
   pull_request:
 
 env:
+  RUSTFLAGS: -Dwarnings
   CARGO_TERM_COLOR: always
-  RUSTV: 1.59
+  rust_min: 1.49.0
 
 jobs:
   build:
@@ -30,10 +31,11 @@ jobs:
             rust: nightly
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@v1
+      - name: Install Rust ${{ env.rust_min }}
+        uses: actions-rs/toolchain@v1
         with:
-          toolchain: ${{ matrix.rust }}
+          toolchain: ${{ env.rust_min }}
+          override: true
           components: rustfmt, clippy
       - name: Check formatting
         run: cargo fmt --all -- --check
