@@ -1,7 +1,7 @@
 use chacha20poly1305::{ChaCha20Poly1305, Key, KeyInit};
 use rand::SeedableRng;
 
-use async_io_crypto::{cipher::CipherRead, decipher::DecipherRead};
+use async_io_crypto::{CipherRead, DecipherRead};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
 #[tokio::test]
