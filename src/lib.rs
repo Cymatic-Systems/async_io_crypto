@@ -6,7 +6,7 @@
 //! # use chacha20poly1305::{ChaCha20Poly1305, Key, KeyInit};
 //! # use rand::SeedableRng;
 //!
-//! #[tokio::main]
+//! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!
 //! let key = b"my very super super secret key!!";
