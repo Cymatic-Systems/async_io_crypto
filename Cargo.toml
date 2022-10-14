@@ -10,7 +10,7 @@ homepage = "https://github.com/chroussel/async_io_crypto"
 description = """
 A rust library for handling AsyncRead with ciphering / deciphering.
 """
-categories = ["asynchronous", "security"]
+categories = ["asynchronous", "cryptography"]
 keywords = ["io", "async", "aead", "ciphering"]
 
 [dependencies]
