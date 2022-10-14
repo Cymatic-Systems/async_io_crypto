@@ -42,6 +42,7 @@ pin_project! {
         reader: S,
         read: usize,
         last: bool,
+        chunk_info_buffer: BytesMut,
         buffer: BytesMut,
         encryptor: Option<EncryptorBE32<C>>,
         state: State,
@@ -53,12 +54,16 @@ where
     <C as aead::AeadCore>::NonceSize: Sub<U5>,
     <<C as aead::AeadCore>::NonceSize as Sub<U5>>::Output: ArrayLength<u8>,
 {
-    const FETCH_SIZE: usize = CHUNK_SIZE - <C::CiphertextOverhead as Unsigned>::USIZE;
+    const TAG_OVERHEAD: usize = <C as aead::AeadCore>::TagSize::USIZE;
+    const CIPHER_OVERHEAD: usize = <C as aead::AeadCore>::CiphertextOverhead::USIZE;
+    const FETCH_SIZE: usize = CHUNK_SIZE - Self::TAG_OVERHEAD - Self::CIPHER_OVERHEAD;
+
     pub fn new<R: rand::RngCore + rand::CryptoRng + Send>(
         reader: S,
         cipher: C,
         csprng: &mut R,
     ) -> (Self, Nonce<C, StreamBE32<C>>) {
+        let chunk_info_buffer = BytesMut::with_capacity(CHUNK_INFO_SIZE);
         let buffer = BytesMut::with_capacity(CHUNK_SIZE);
         let mut nonce: Nonce<C, StreamBE32<C>> = GenericArray::default();
         csprng.fill_bytes(&mut nonce);
@@ -70,6 +75,7 @@ where
                 read: 0,
                 last: false,
                 encryptor: Some(encryptor),
+                chunk_info_buffer,
                 buffer,
                 state: State::Init,
             },
@@ -152,25 +158,11 @@ where
         }
     }
 
-    fn write_size(&mut self, dst: &mut ReadBuf) -> usize {
-        if dst.remaining() >= CHUNK_INFO_SIZE {
-            let value = self.buffer.len() as u32;
-            dst.put_slice(&value.to_le_bytes());
-            let last = &[u8::from(self.last)];
-            dst.put_slice(last);
-            self.state = State::WritingChunk;
-            CHUNK_INFO_SIZE
-        } else {
-            0
-        }
-    }
-
-    fn write_to_buffer(&mut self, dst: &mut ReadBuf) -> usize {
-        let chunk = self.buffer.chunk();
-        let amt = std::cmp::min(chunk.len(), dst.remaining());
-        dst.put_slice(&chunk[..amt]);
-        self.buffer.advance(amt);
-        amt
+    fn write_size(&mut self) {
+        let value = self.buffer.len() as u32;
+        self.chunk_info_buffer.put_u32_le(value);
+        let last = u8::from(self.last);
+        self.chunk_info_buffer.put_u8(last);
     }
 }
 
@@ -200,11 +192,15 @@ where
                 }
                 State::Ciphering => {
                     me.cipher_chunk()?;
+                    me.write_size();
                 }
                 State::WritingChunkSize => {
-                    me.write_size(buf);
                     if buf.remaining() == 0 {
                         return Poll::Ready(Ok(()));
+                    }
+                    write_to_buffer(&mut me.chunk_info_buffer, buf);
+                    if me.chunk_info_buffer.remaining() == 0 {
+                        me.state = State::WritingChunk;
                     }
                 }
                 State::WritingChunk => {
@@ -218,7 +214,7 @@ where
                             me.state = State::Init;
                         }
                     } else {
-                        let w = me.write_to_buffer(buf);
+                        let w = write_to_buffer(&mut me.buffer, buf);
                         if w != 0 {
                             return Poll::Ready(Ok(()));
                         }
@@ -229,5 +225,100 @@ where
                 }
             }
         }
+    }
+}
+
+fn write_to_buffer(src: &mut BytesMut, dst: &mut ReadBuf) -> usize {
+    let chunk = src.chunk();
+    let amt = std::cmp::min(chunk.len(), dst.remaining());
+    dst.put_slice(&chunk[..amt]);
+    src.advance(amt);
+    amt
+}
+
+#[cfg(test)]
+mod tests {
+    use std::pin::Pin;
+
+    use aead::generic_array::typenum::Unsigned;
+    use chacha20poly1305::{ChaCha20Poly1305, Key, KeyInit};
+    use rand::SeedableRng;
+    use tokio::io::{AsyncRead, ReadBuf};
+    use tokio_test::{io, task};
+
+    use crate::{CipherRead, CHUNK_INFO_SIZE};
+
+    fn create_read<R: AsyncRead + Unpin + Send>(input: R) -> impl AsyncRead + Unpin + Send {
+        let mut csprng = rand_chacha::ChaCha20Rng::from_entropy();
+        let secret = b"super_secret_aaaaaaaaaaaaaaaaaaa";
+        let key = Key::from_slice(secret);
+        let cipher: ChaCha20Poly1305 = ChaCha20Poly1305::new(key);
+        let (ci_reader, _) = CipherRead::new(input, cipher, &mut csprng);
+        ci_reader
+    }
+
+    const TAG_OVERHEAD: usize = <ChaCha20Poly1305 as aead::AeadCore>::TagSize::USIZE;
+    const CIPHER_OVERHEAD: usize = <ChaCha20Poly1305 as aead::AeadCore>::CiphertextOverhead::USIZE;
+
+    #[test]
+    fn it_can_cipher_empty() {
+        let empty = io::Builder::new().build();
+        let mut t = task::spawn(());
+        let mut r = create_read(empty);
+
+        t.enter(|cx, _| {
+            let mut buf = [0; 8];
+            let mut read_buf = ReadBuf::new(&mut buf);
+            tokio_test::assert_ready_ok!(Pin::new(&mut r).poll_read(cx, &mut read_buf));
+            assert_eq!(read_buf.filled().len(), 0);
+        })
+    }
+
+    #[test]
+    fn it_can_cipher_small_data() {
+        let data = b"abcd";
+        let small_read = io::Builder::new().read(data).build();
+        let mut t = task::spawn(());
+        let mut r = create_read(small_read);
+
+        t.enter(|cx, _| {
+            let mut buf = [0; 64];
+            let written = {
+                let mut read_buf = ReadBuf::new(&mut buf);
+                tokio_test::assert_ready_ok!(Pin::new(&mut r).poll_read(cx, &mut read_buf));
+                read_buf.filled().len()
+            };
+
+            assert_eq!(
+                written,
+                CHUNK_INFO_SIZE + data.len() + CIPHER_OVERHEAD + TAG_OVERHEAD
+            );
+        })
+    }
+
+    #[test]
+    fn it_can_cipher_small_buffer() {
+        let data = b"abcd";
+        let small_read = io::Builder::new().read(data).build();
+        let mut t = task::spawn(());
+        let mut r = create_read(small_read);
+
+        let expected_size = CHUNK_INFO_SIZE + data.len() + CIPHER_OVERHEAD + TAG_OVERHEAD;
+        t.enter(|cx, _| {
+            const BUF_SIZE: usize = 4;
+            let mut buf = [0; BUF_SIZE];
+
+            let mut total_written = 0;
+            while total_written < expected_size {
+                let mut read_buf = ReadBuf::new(&mut buf);
+                tokio_test::assert_ready_ok!(Pin::new(&mut r).poll_read(cx, &mut read_buf));
+                let count_w = read_buf.filled().len();
+                let remaining = usize::min(expected_size - total_written, BUF_SIZE);
+                total_written += count_w;
+                assert_eq!(remaining, count_w);
+                read_buf.clear();
+            }
+            assert_eq!(total_written, expected_size)
+        })
     }
 }
