@@ -7,7 +7,7 @@
 //! # use rand::SeedableRng;
 //!
 //! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn main() {
 //!
 //! let key = b"my very super super secret key!!";
 //! let plaintext = b"hello world!";
@@ -19,7 +19,7 @@
 //! let mut ciphered = Vec::new();
 //! ci_reader.read_to_end(&mut ciphered).await.unwrap();
 //!
-//! let mut deci_reader = DecipherRead::new(&ciphered[..], cipher, nonce.as_slice());
+//! let mut deci_reader = DecipherRead::new(&ciphered[..], cipher, nonce.as_slice()); }
 
 //! let mut deciphered = Vec::new();
 //! deci_reader.read_to_end(&mut deciphered).await.unwrap();
